@@ -1,0 +1,89 @@
+// This source code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// © ManlikeIs
+
+//@version=4
+
+barColorsOnPrevClose = input(title="Color bars based on previous close", type=input.bool, defval=false)
+Barcolor= input(false,title="Buy Sell Volume Barcolor")
+vi = input(false, title="Volume Index",type=input.bool)
+VNBarcolor=input(false,title="Volume Index Barcolor")
+Vnlen=input(1,title="Volume Index length")
+
+// BUYING VOLUME AND SELLING VOLUME //
+BV = iff( (high==low), 0, volume*(close-low)/(high-low))
+SV = iff( (high==low), 0, volume*(high-close)/(high-low))
+
+vol = iff(volume > 0, volume, 1)
+
+TP = BV + SV
+// RAW Pressure Volume Calculations
+BPV = BV / TP * vol
+SPV = SV / TP * vol
+TPV = BPV + SPV
+
+// Karthik Marar's Pressure Volume Normalized Version (XeL-MOD.)
+VN = vol / ema(vol,20)
+BPN = BV / ema(BV,20) * VN * 100
+SPN = SV / ema(SV,20) * VN * 100
+TPN = BPN + SPN
+
+// Conditional Selectors for RAW/Norm
+BPc1 = BPV > SPV ? BPV : -abs(BPV)
+BPc2 = BPN > SPN ? BPN : -abs(BPN)
+SPc1 = SPV > BPV ? SPV : -abs(SPV)
+SPc2 = SPN > BPN ? SPN : -abs(SPN)
+BPcon = vi ? BPc2 : BPc1
+SPcon = vi ? SPc2 : SPc1
+
+palette = barColorsOnPrevClose ? close[1] > close ? color.red : color.green : open > close ? color.red : color.green
+plot(vi ? na : volume, color = palette, style=plot.style_columns, linewidth=3,title="Volume", transp=70)
+
+plot(vi ? na : BPcon,title="BuyVolume",color=color.green,style=plot.style_columns,transp=10)
+plot(vi ? na : SPcon,title="SellVolume",color=color.red,style=plot.style_columns,transp=10)
+
+colors=(BPcon>SPcon ? color.blue : BPcon<SPcon ? color.purple:color.gray)
+barcolor(Barcolor ? colors : na)
+
+BuyVolumePercent=100*BV/(BV+SV)
+SellVolumePercent=100*SV/(BV+SV)
+
+plot(vi ? na : BuyVolumePercent,title="BuyVolume%",color=color.green,style=plot.style_circles)
+plot(vi ? na : SellVolumePercent,title="SellVolume%",color=color.red,style=plot.style_circles)
+
+VNcolors=(VN>Vnlen and close > open ? #00ffff : VN>Vnlen and close < open ?  color.gray : color.yellow)
+plot(VN,title="VolumeIndex",color=VNcolors,style=plot.style_columns,transp=10)
+barcolor(VNBarcolor ? VNcolors :na)
+
+
+strategy("Volume behavior strategy", overlay=true, calc_on_order_fills=true)
+     
+///ATR alculation for Exit strategy
+ATR = atr(14)
+price = close
+stop_levelL = close - (0.2 * ATR)
+profit_levelL = close + (0.75 * ATR)
+stop_levelS = close + (0.2 * ATR)
+profit_levelS = close - (0.5 * ATR)
+t = time(timeframe.period, "0300-1700")
+bgcolor(not na(t) ? color.green : na) 
+
+time_cond = not na(t)
+
+// Entry & Exxit strategy based on Volume behavior
+EnterLong = time_cond and BV > SV
+EnterShort= time_cond and SV > BV
+
+// Strategy Logic
+if (time_cond and EnterLong)
+    strategy.entry("EnterLong", strategy.long, qty=1)
+    strategy.exit("TP/SL", "My Long Entry Id", stop=stop_levelL, limit=profit_levelL) 
+
+if (time_cond and EnterShort)
+    strategy.entry("EnterShort", strategy.short, qyt=1)
+    strategy.exit("TP/SL", "My Long Entry Id", stop=stop_levelS, limit=profit_levelS)
+    
+StrategyEntryLong = strategy.long
+StrategyEntryShort = strategy.short
+
+alertcondition(StrategyEntryLong, title='Long', message='long sl={{stop_levelL}} tp={{profit_levelL}}')
+alertcondition(StrategyEntryShort, title='Short', message='Short sl={{stop_levelS}} tp={{profit_levelS}}')    
